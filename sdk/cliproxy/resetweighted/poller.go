@@ -231,7 +231,22 @@ func (p *Poller) pollVendor(provider string, entry hostAuthEntry, now time.Time)
 	if !ok {
 		return nil, errors.New("unparseable usage body")
 	}
+	q.Vendor = vendorKey(provider)
+	if provider == "codex" {
+		q.AccountID = strings.TrimSpace(gjson.GetBytes(raw, "account_id").String()) // keys state/reset-credits.json vendors.openai.<id>
+	}
 	return q, nil
+}
+
+// vendorKey maps a cpa provider onto the fleet credit collector's vendor name.
+func vendorKey(provider string) string {
+	switch provider {
+	case "codex":
+		return "openai"
+	case "claude":
+		return "anthropic"
+	}
+	return provider
 }
 
 // pollUsageAce maps feed rows onto Claude credentials. Match order: an explicit
