@@ -30,14 +30,18 @@ type yamlConfig struct {
 	FableReserveMode   string   `yaml:"fable_reserve_mode"`
 	FableModelPrefixes []string `yaml:"fable_model_prefixes"`
 
-	PollIntervalS  *float64          `yaml:"poll_interval_s"`
-	UsageAceURL    string            `yaml:"usage_ace_url"`
-	ClaudeKeyMap   map[string]string `yaml:"claude_key_map"` // auth id or email -> usage.ace key
-	AffinityPath   string            `yaml:"affinity_path"`
-	AffinityMax    *int              `yaml:"affinity_max"`
-	SessionHeader  string            `yaml:"session_header"`
-	Providers      []string          `yaml:"providers"` // providers the plugin scores; others -> Handled:false
-	DisablePolling bool              `yaml:"disable_polling"`
+	PollIntervalS *float64          `yaml:"poll_interval_s"`
+	UsageAceURL   string            `yaml:"usage_ace_url"`
+	ClaudeKeyMap  map[string]string `yaml:"claude_key_map"` // auth id or email -> usage.ace key
+	AffinityPath  string            `yaml:"affinity_path"`
+	AffinityMax   *int              `yaml:"affinity_max"`
+	SessionHeader string            `yaml:"session_header"`
+	Providers     []string          `yaml:"providers"` // providers the plugin scores; others -> Handled:false
+	// Credit steering (credit.go): the shared rules file, the fleet collector's credits file, and the weight.
+	CreditRulesPath     string   `yaml:"credit_rules_path"`
+	CreditsPath         string   `yaml:"credits_path"`
+	CreditUrgencyWeight *float64 `yaml:"credit_urgency_weight"`
+	DisablePolling      bool     `yaml:"disable_polling"`
 	// QuotaSeed is a bench aid: static quota per credential matcher (auth id,
 	// label, name or email substring) applied at configure time and on every
 	// poll before live data. Live polling overwrites matched entries.
@@ -152,6 +156,14 @@ func DecodeRuntimeConfig(raw []byte) (RuntimeConfig, error) {
 	}
 	if h := strings.TrimSpace(pc.SessionHeader); h != "" {
 		rc.SessionHeader = h
+	}
+	rc.Score.CreditRules = LoadCreditRules(pc.CreditRulesPath)
+	rc.Score.CreditWeight = rc.Score.CreditRules.WeightDefault
+	if pc.CreditUrgencyWeight != nil && *pc.CreditUrgencyWeight == *pc.CreditUrgencyWeight && *pc.CreditUrgencyWeight >= 0 {
+		rc.Score.CreditWeight = *pc.CreditUrgencyWeight
+	}
+	if p := strings.TrimSpace(pc.CreditsPath); p != "" {
+		rc.Score.Credits = NewCreditStore(p)
 	}
 	if len(pc.Providers) > 0 {
 		rc.Providers = make(map[string]bool, len(pc.Providers))

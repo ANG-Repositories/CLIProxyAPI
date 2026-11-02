@@ -1,0 +1,23 @@
+{
+  "_doc": "Golden vectors for the reset-credit steering rule (credit_urgency). ONE definition for the Claude relay (claude_pool_lib.credit_urgency_detail) and the cpa reset-weighted-scheduler plugin (sdk/cliproxy/resetweighted/credit.go). Both test suites load this file and assert every row. Spec: plans/2026-11-02_cpa-openai-credit-steering-parity-SPEC.md. Rules file: config/reset-credit-steering.json.",
+  "rules": {"steer_window_h": 336, "natural_reset_floor_h": 72, "state_max_age_h": 3, "weight_default": 1.0},
+  "now": "2026-11-02T14:00:00Z",
+  "cases": [
+    {"name": "credit in 4 days, reset in 100 h", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.714286, "reason": "ok"},
+    {"name": "credit in 13 days", "credit": {"usable": 2, "expires_at": "2026-11-15T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.071429, "reason": "ok"},
+    {"name": "credit in 20 days (beyond window)", "credit": {"usable": 1, "expires_at": "2026-11-22T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "expiry_beyond_window"},
+    {"name": "credit in exactly 14 days (boundary, beyond)", "credit": {"usable": 1, "expires_at": "2026-11-16T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "expiry_beyond_window"},
+    {"name": "no credit row", "credit": null, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "no_credit"},
+    {"name": "usable 0", "credit": {"usable": 0, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "no_credit"},
+    {"name": "usable missing", "credit": {"expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "no_credit"},
+    {"name": "expiry unknown", "credit": {"usable": 1, "expires_at": null}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "expiry_unknown"},
+    {"name": "expired", "credit": {"usable": 1, "expires_at": "2026-11-01T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "expired"},
+    {"name": "state stale (4 h)", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 4.0, "weight": 1.0, "credit_urgency": 0.0, "reason": "credit_state_stale"},
+    {"name": "state age exactly 3 h is fresh", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 3.0, "weight": 1.0, "credit_urgency": 0.714286, "reason": "ok"},
+    {"name": "natural reset unknown", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": null, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "natural_reset_unknown"},
+    {"name": "natural reset 71 h (below floor)", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 71, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.0, "reason": "natural_reset_lt_72h"},
+    {"name": "natural reset exactly 72 h (at floor, allowed)", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 72, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.714286, "reason": "ok"},
+    {"name": "weight 0 (off)", "credit": {"usable": 1, "expires_at": "2026-11-06T14:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 0.0, "credit_urgency": 0.0, "reason": "weight_off"},
+    {"name": "credit in 1 h (almost 1)", "credit": {"usable": 1, "expires_at": "2026-11-02T15:00:00Z"}, "hrs_to_reset": 100, "state_age_h": 0.5, "weight": 1.0, "credit_urgency": 0.997024, "reason": "ok"}
+  ]
+}
