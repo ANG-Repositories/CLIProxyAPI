@@ -149,17 +149,13 @@ func TestToolAliasExactStillRestores(t *testing.T) {
 	}
 }
 
-// A name that is not alias-shaped is not a copy slip (the model never sees raw
-// tool names): it stays a hard refusal on both paths.
-func TestToolNameNotAliasShapedStillRefused(t *testing.T) {
+// A name that is not alias-shaped is not a copy slip (t_3f4b6bd1): the caller
+// gets the model's real call, byte for byte, on both paths, and answers it
+// with its own unknown-tool result.
+func TestToolNameNotAliasShapedPassesThrough(t *testing.T) {
 	_, m, _, key := preparedTool(t)
-	for _, name := range []string{"Bash", "nonexistent", "xdpx_v1_t_abc"} {
-		if _, err := streamAllSplits(t, m, toolEvents(name, key)); err == nil || !strings.Contains(err.Error(), "unknown_tool") {
-			t.Fatalf("stream %q: want unknown_tool, got %v", name, err)
-		}
-		if _, err := m.RestoreJSON(jsonToolUse(name, key)); err == nil || !strings.Contains(err.Error(), "unknown_tool") {
-			t.Fatalf("json %q: want unknown_tool, got %v", name, err)
-		}
+	for _, name := range []string{"Bash", "process_manage", "nonexistent", "xdpx_v1_t_abc"} {
+		assertRawToolPassesThrough(t, m, name, key)
 	}
 }
 

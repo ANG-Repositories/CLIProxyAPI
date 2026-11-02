@@ -22,6 +22,7 @@ type blockState struct {
 	input  []byte
 	text   textDecoder
 	marker string // t_7bd8c9b9: undeclared alias-shaped tool name -> unknownToolMarker
+	raw    bool   // t_3f4b6bd1: undeclared raw (non-alias) tool name, passed through verbatim
 }
 type Stream struct {
 	m                      *RequestMap
@@ -226,10 +227,11 @@ func (s *Stream) handle(raw []byte) error {
 			name := block.get("name").str()
 			if original, ok := s.m.reverse[name]; !ok || !s.m.allowed[original] {
 				if !aliasShapedToolName(name) {
-					return Error("unknown_tool")
+					b.raw = true
+				} else {
+					s.markers++
+					b.marker = unknownToolMarker(s.markers)
 				}
-				s.markers++
-				b.marker = unknownToolMarker(s.markers)
 			}
 			if block.has("signature") {
 				return Error("signed_tool_block")
@@ -238,7 +240,7 @@ func (s *Stream) handle(raw []byte) error {
 			if input == nil || input.kind != '{' || len(input.fields) != 0 {
 				return Error("stream_initial_input")
 			}
-			q.ready = false
+			q.ready = b.raw
 		}
 		if b.kind == "text" {
 			initial := block.get("text").str()
@@ -276,6 +278,9 @@ func (s *Stream) handle(raw []byte) error {
 			if part == nil || part.kind != '"' {
 				return Error("stream_json")
 			}
+			if b.raw {
+				break
+			}
 			if len(b.input)+len(part.text) > maxTool {
 				return Error("tool_limit")
 			}
@@ -308,7 +313,7 @@ func (s *Stream) handle(raw []byte) error {
 		if b == nil {
 			return Error("stream_order")
 		}
-		if b.kind == "tool_use" {
+		if b.kind == "tool_use" && !b.raw {
 			// A zero-argument call streams no JSON (one empty partial_json, or no delta at all):
 			// its input is the {} the start event already carried.
 			if len(bytes.TrimSpace(b.input)) == 0 {
