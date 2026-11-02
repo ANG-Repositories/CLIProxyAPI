@@ -53,6 +53,10 @@ type Quota struct {
 	ObservedAt time.Time
 	// Source names where the snapshot came from (log only).
 	Source string
+	// Vendor and AccountID key the credential's banked reset credit in the fleet
+	// collector's state file (credit.go); empty = no credit lookup.
+	Vendor    string
+	AccountID string
 }
 
 // ScoreConfig holds the tunables (see README for the YAML keys).
@@ -68,6 +72,12 @@ type ScoreConfig struct {
 	FableReserveMargin float64 // percent of the total window
 	FableReserveMode   string  // off | shadow | enforce
 	FableModelPrefixes []string
+
+	// Credit steering (credit.go): reclaim = headroom x max(reset_urgency, credit_urgency x CreditWeight).
+	// CreditWeight 0 = off. Credits nil = no store (credit_urgency 0, reason no_credit).
+	CreditRules  CreditRules
+	CreditWeight float64
+	Credits      *CreditStore
 }
 
 // DefaultScoreConfig mirrors ~/.hermes/config/claude-router.json and the relay ROUTER_DEFAULTS.
@@ -84,6 +94,8 @@ func DefaultScoreConfig() ScoreConfig {
 		FableReserveMargin: 5.0,
 		FableReserveMode:   "enforce",
 		FableModelPrefixes: []string{"claude-fable"},
+		CreditRules:        DefaultCreditRules(),
+		CreditWeight:       1.0,
 	}
 }
 
@@ -108,6 +120,8 @@ type Scored struct {
 	FableReserved bool
 	Fresh         bool
 	Reason        string
+	CreditUrgency float64
+	CreditReason  string
 }
 
 // IsFableModel reports whether the requested model belongs to the Fable family.
@@ -184,13 +198,38 @@ func (cfg ScoreConfig) Fresh(q *Quota, now time.Time) bool {
 }
 
 // Reclaim is headroom x urgency on the long window, 0 when the snapshot is unusable.
+// urg is max(reset_urgency, credit_urgency x CreditWeight): the relay's shape (claude_pool_lib #243).
 func (cfg ScoreConfig) Reclaim(q *Quota, now time.Time) (hr, urg, reclaim float64) {
+	hr, urg, reclaim, _ = cfg.ReclaimDetail(q, now)
+	return hr, urg, reclaim
+}
+
+// ReclaimDetail is Reclaim plus the credit decision (for status and the pick log).
+func (cfg ScoreConfig) ReclaimDetail(q *Quota, now time.Time) (hr, urg, reclaim float64, credit CreditDetail) {
+	credit = CreditDetail{Reason: "no_credit"}
 	if !cfg.Fresh(q, now) {
-		return 0, 0, 0
+		return 0, 0, 0, credit
 	}
 	hr = headroom(q.Long)
-	urg = Urgency(q.Long.ResetsAt, now, horizonFor(cfg, q.Long.Span))
-	return hr, urg, hr * urg
+	reset := Urgency(q.Long.ResetsAt, now, horizonFor(cfg, q.Long.Span))
+	credit = cfg.creditFor(q, now)
+	urg = math.Max(reset, credit.CreditUrgency*math.Max(0, cfg.CreditWeight))
+	return hr, urg, hr * urg, credit
+}
+
+// creditFor evaluates the credit rule for the credential behind q. The natural-reset
+// hours come from the same long window the reset urgency reads, so "a credit that
+// cannot legally be spent" (reset < floor) is judged on the live quota, never a guess.
+func (cfg ScoreConfig) creditFor(q *Quota, now time.Time) CreditDetail {
+	if cfg.Credits == nil || q == nil || q.AccountID == "" {
+		return CreditDetail{Reason: "no_credit", ExpiresInH: math.NaN()}
+	}
+	c, age := cfg.Credits.Lookup(q.Vendor, q.AccountID, now)
+	hrs := math.NaN()
+	if !q.Long.ResetsAt.IsZero() {
+		hrs = q.Long.ResetsAt.Sub(now).Hours()
+	}
+	return CreditUrgency(cfg.CreditRules, c, hrs, now, age, cfg.CreditWeight)
 }
 
 // OverShortGuard reports whether the 5-hour (short) window is at/over the guard percentage.
@@ -311,17 +350,20 @@ func Rank(cfg ScoreConfig, cands []Candidate, now time.Time, fableRequest bool) 
 
 	out := make([]Scored, 0, len(pool))
 	for _, c := range pool {
-		hr, urg, rc := cfg.Reclaim(c.Quota, now)
+		hr, urg, rc, credit := cfg.ReclaimDetail(c.Quota, now)
 		damp := 1.0 / (1.0 + math.Max(0, cfg.BalanceK)*float64(max(0, c.Inflight)))
 		score := (cfg.WeightReclaim*rc + cfg.BaseFloor) * damp
 		s := Scored{
 			ID: c.ID, Score: score, Headroom: hr, Urgency: urg, Reclaim: rc,
 			BalanceDamp: damp, ShortGuard: cfg.OverShortGuard(c.Quota),
 			FableReserved: reserved[c.ID], Fresh: cfg.Fresh(c.Quota, now),
+			CreditUrgency: credit.CreditUrgency, CreditReason: credit.Reason,
 		}
 		switch {
 		case !s.Fresh:
 			s.Reason = "unknown_quota"
+		case rc > 1e-9 && credit.CreditUrgency*math.Max(0, cfg.CreditWeight) > Urgency(c.Quota.Long.ResetsAt, now, horizonFor(cfg, c.Quota.Long.Span)):
+			s.Reason = "credit"
 		case rc > 1e-9:
 			s.Reason = "reset"
 		case damp < 1:
