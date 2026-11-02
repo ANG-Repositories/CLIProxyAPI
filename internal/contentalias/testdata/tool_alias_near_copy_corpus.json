@@ -11,5 +11,9 @@
     {"unit": "15", "ts": "2026-10-26T15:31:33Z", "emitted": "dpx_v1_t_a1e685aea8f2a7615351c317",  "declared": "dpx_v1_t_a1e685aea8f2a7603631c317", "dist": 4},
     {"unit": "3",  "ts": "2026-10-27T12:00:57Z", "emitted": "dpx_v1_t_918e1f4ed50b193223191dce",  "declared": "dpx_v1_t_918e1f4ed50b193223158dce", "dist": 2, "declared_tool": "mcp__bpx__write_file"},
     {"unit": "3",  "ts": "2026-10-27T12:07:56Z", "emitted": "dpx_v1_t_54cc7511020bdcab648c7seed", "declared": "dpx_v1_t_54cc7511020bdcab648c7ce0", "dist": 3, "declared_tool": "mcp__bpx__terminal"}
+  ],
+  "raw_names_source": "t_3f4b6bd1: response tool_use names with no dpx_v1_ prefix that DPX refused as unknown_tool. Each must pass through verbatim.",
+  "raw_names": [
+    {"unit": "24", "ts": "2026-11-01T14:03:50.326Z", "wire": "89655-1147", "emitted": "process_manage"}
   ]
 }

@@ -245,7 +245,7 @@ func (m *RequestMap) restoreBlock(block *node, edits *[]edit, markers *int) erro
 		}
 		if !ok || !m.allowed[original] {
 			if !aliasShapedToolName(name.str()) {
-				return Error("unknown_tool")
+				return nil // t_3f4b6bd1: raw name passes through verbatim
 			}
 			*markers++
 			*edits = append(*edits, replace(name, unknownToolMarker(*markers)))
