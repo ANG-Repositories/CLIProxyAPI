@@ -56,13 +56,16 @@ func TestDeclaredToolSymbolTable(t *testing.T) {
 	if n.get("tools").items[1].get("name").str() != "web_search" {
 		t.Fatal("provider tool changed")
 	}
-	for _, name := range []string{"mcp__one__TaskFoo", "dpx_v1_t_unknown"} {
-		response, _ := json.Marshal(map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": name, "input": map[string]any{}}}})
-		// t_7bd8c9b9: an undeclared alias-shaped name becomes the
-		// unknown_tool_N marker; a raw name is still refused.
-		if out, err := m.RestoreJSON(response); err == nil && !bytes.Contains(out, []byte(`"name":"unknown_tool_1"`)) {
-			t.Fatalf("unknown/double restoration accepted: %s", out)
-		}
+	// t_7bd8c9b9: an undeclared alias-shaped name becomes the unknown_tool_N
+	// marker. t_3f4b6bd1: a raw name (here the original declared name) passes
+	// through verbatim and is never restored a second time.
+	response, _ := json.Marshal(map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "dpx_v1_t_unknown", "input": map[string]any{}}}})
+	if out, err := m.RestoreJSON(response); err != nil || !bytes.Contains(out, []byte(`"name":"unknown_tool_1"`)) {
+		t.Fatalf("unknown alias restoration accepted: %v %s", err, out)
+	}
+	response, _ = json.Marshal(map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "mcp__one__TaskFoo", "input": map[string]any{"arg": "x"}}}})
+	if out, err := m.RestoreJSON(response); err != nil || !bytes.Equal(out, response) {
+		t.Fatalf("raw name not passed through verbatim: %v %s", err, out)
 	}
 }
 func TestExecutableValuesUntouched(t *testing.T) {

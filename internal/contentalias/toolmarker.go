@@ -24,10 +24,14 @@ import (
 // name in history, and a later hop that does not run through DPX (fallback to
 // another lane) sends that history to Anthropic raw, which validates names.
 //
-// A name that is not alias-shaped (for example a raw "Bash") stays a hard
-// unknown_tool refusal. The model only ever sees aliases, so a raw name is not
-// a copy slip: it means original names reached the model, or a different
-// fault. None occurred in the census, and a loud refusal keeps it visible.
+// A name that is not alias-shaped (for example a raw "exec" or
+// "process_manage") passes through to the caller verbatim, name and input as
+// emitted (t_3f4b6bd1). It is not a copy slip: the model saw that raw name in
+// prompt prose (2026-11-01 06:03, claude-dpx-24, wire 89655-1147: Hermes's
+// deferred-tool catalog lists process_manage, which is not a declared tool).
+// The caller answers it the way it answers any model call to a tool it lacks
+// (Claude Code: "No such tool available"), and the turn continues. Refusing it
+// with unknown_tool failed the turn and reaped the caller's session.
 //
 // The marker contains no dpx_v1_ token, so the next request's history maps it
 // with historyToolAlias like any other history-only name: a deterministic,
