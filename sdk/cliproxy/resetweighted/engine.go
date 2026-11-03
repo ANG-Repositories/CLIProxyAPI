@@ -391,6 +391,9 @@ type credentialStatus struct {
 	Exhausted     bool      `json:"exhausted"`
 	ResetsAt      time.Time `json:"resets_at,omitempty"`
 	ObservedAt    time.Time `json:"observed_at,omitempty"`
+	CreditUrgency float64   `json:"credit_urgency"`
+	CreditReason  string    `json:"credit_reason,omitempty"`
+	CreditExpH    float64   `json:"credit_expires_in_h,omitempty"`
 	Source        string    `json:"source,omitempty"`
 	Bound         int       `json:"bound_sessions"`
 }
@@ -411,9 +414,13 @@ func (e *Engine) Status() map[string]any {
 	creds := make([]credentialStatus, 0, len(ids))
 	for _, id := range ids {
 		q := e.quotaFor(id)
-		hr, urg, rc := cfg.Score.Reclaim(q, now)
+		hr, urg, rc, credit := cfg.Score.ReclaimDetail(q, now)
 		cs := credentialStatus{AuthID: id, Headroom: hr, Urgency: urg, Reclaim: rc, Fresh: cfg.Score.Fresh(q, now),
-			Exhausted: Exhausted(q, now), FableReserved: cfg.Score.FableReserved(q, now), Bound: bound[id]}
+			Exhausted: Exhausted(q, now), FableReserved: cfg.Score.FableReserved(q, now), Bound: bound[id],
+			CreditUrgency: credit.CreditUrgency, CreditReason: credit.Reason}
+		if credit.ExpiresInH == credit.ExpiresInH {
+			cs.CreditExpH = credit.ExpiresInH
+		}
 		if q != nil {
 			cs.LongUsed, cs.ShortUsed, cs.ResetsAt, cs.ObservedAt, cs.Source = q.Long.Used, q.Short.Used, q.Long.ResetsAt, q.ObservedAt, q.Source
 			if q.Fable.Known {
