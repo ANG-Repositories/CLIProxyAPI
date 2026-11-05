@@ -17,15 +17,18 @@ PKG = Path("internal/contentalias")
 TESTS = ["TestToolAliasNearCopyStreamBecomesMarker",
          "TestToolAliasNearCopyJSONBecomesMarker",
          "TestToolAliasExactStillRestores",
-         "TestToolNameNotAliasShapedStillRefused",
+         "TestToolNameNotAliasShapedPassesThrough",
          "TestToolMarkerHistoryPreparesCleanly",
          # t_b54ef60f: the 10 captured live near-copies (testdata corpus).
          "TestLiveNearCopyCorpus",
          "TestLiveNearCopyEditOpsCannotHitV3Sibling",
          # t_8621d5da / t_388a6308: every undeclared dpx_v1_ name is a slip.
          "TestToolAliasDoubledPrefixBecomesMarker",
-         "TestToolDoubledPrefixNonAliasStillRefused",
-         "TestToolUndeclaredCodecPrefixBecomesMarker"]
+         "TestToolDoubledPrefixNonAliasPassesThrough",
+         "TestToolUndeclaredCodecPrefixBecomesMarker",
+         # t_3f4b6bd1: raw (non-dpx_v1_) names pass through verbatim.
+         "TestLiveRawNameCorpusPassesThrough",
+         "TestRawNameBesideSlipAndDeclared"]
 
 # Mutants the live-corpus test itself must catch (t_b54ef60f): reverting the
 # marker branch on either path is exactly the pre-#42 turn kill.
@@ -33,6 +36,8 @@ MUST_CATCH = {
     "stream_marker_reverted": "TestLiveNearCopyCorpus",
     "json_marker_reverted": "TestLiveNearCopyCorpus",
     "alias_shape_class_letter_only": "TestToolUndeclaredCodecPrefixBecomesMarker",
+    "stream_raw_name_refused": "TestLiveRawNameCorpusPassesThrough",
+    "json_raw_name_refused": "TestLiveRawNameCorpusPassesThrough",
 }
 
 
@@ -46,6 +51,14 @@ def sub(pattern, repl, flags=0):
 
 
 MUTANTS = [
+    # t_3f4b6bd1: the pre-fix raw-name refusal (11-01 06:03, unit 24).
+    ("stream_raw_name_refused", "stream.go",
+     sub(r"\t\t\t\t\tb\.raw = true\n", '\t\t\t\t\treturn Error("unknown_tool")\n')),
+    ("json_raw_name_refused", "request.go",
+     sub(r"\t\t\t\treturn nil // t_3f4b6bd1: raw name passes through verbatim\n", '\t\t\t\treturn Error("unknown_tool")\n')),
+    # Raw call passed through, but its input still goes through the restore.
+    ("stream_raw_name_input_restored", "stream.go",
+     sub(r'\t\tif b\.kind == "tool_use" && !b\.raw \{\n', '\t\tif b.kind == "tool_use" {\n')),
     # The pre-fix stream: any undeclared name refuses the turn.
     ("stream_marker_reverted", "stream.go",
      sub(r"\t\t\t\tif !aliasShapedToolName\(name\) \{\n", "\t\t\t\tif true {\n")),
