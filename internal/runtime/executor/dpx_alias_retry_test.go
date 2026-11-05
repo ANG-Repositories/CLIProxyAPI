@@ -17,7 +17,7 @@ import (
 )
 
 func TestDPXAliasNoRetryAfterDispatch(t *testing.T) {
-	for _, mode := range []string{"before_headers", "partial_tool", "complete_tool", "reverse_error", "cancel"} {
+	for _, mode := range []string{"before_headers", "partial_tool", "complete_tool", "reverse_error", "raw_name", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			e, req, opts := aliasFixture(t)
 			opts.Stream = true
@@ -37,12 +37,15 @@ func TestDPXAliasNoRetryAfterDispatch(t *testing.T) {
 				name := gjson.GetBytes(raw, "tools.0.name").String()
 				key := ""
 				gjson.GetBytes(raw, "tools.0.input_schema.properties").ForEach(func(k, v gjson.Result) bool { key = k.String(); return false })
-				if mode == "reverse_error" {
-					// Not alias-shaped: an undeclared dpx_v1_t_ name is the unknown_tool_N
-					// marker since t_7bd8c9b9, a raw unknown name still fails the inverse.
-					name = "unknown_raw_tool"
+				if mode == "raw_name" {
+					name = "unknown_raw_tool" // Raw undeclared calls belong to the client.
 				}
 				body := aliasSSE(name, key, req.Model)
+				if mode == "reverse_error" {
+					// A signed alias-shaped tool block is still an inverse error;
+					// an unsigned unknown alias instead becomes unknown_tool_N.
+					body = bytes.Replace(body, []byte(`"type":"tool_use"`), []byte(`"signature":"invalid","type":"tool_use"`), 1)
+				}
 				if mode == "partial_tool" {
 					body = body[:bytes.Index(body, []byte("event: content_block_stop"))]
 				}
@@ -88,7 +91,13 @@ func TestDPXAliasNoRetryAfterDispatch(t *testing.T) {
 					}
 				}
 			}
-			if err == nil && !(mode == "cancel" && ctx.Err() != nil) {
+			if mode == "raw_name" {
+				// The complete raw tool call is released even though the transport
+				// ends early; the post-dispatch transport error must not retry it.
+				if !bytes.Contains(out, []byte(`"name":"unknown_raw_tool"`)) || !bytes.Contains(out, []byte(`dpx_v1_`)) || !bytes.Contains(out, []byte(`/tmp/Hermes`)) {
+					t.Fatalf("raw call not passed through verbatim: %s", out)
+				}
+			} else if err == nil && !(mode == "cancel" && ctx.Err() != nil) {
 				t.Fatal("incomplete/invalid upstream accepted")
 			}
 			if calls.Load() != 1 || credentials.count() != 1 {
