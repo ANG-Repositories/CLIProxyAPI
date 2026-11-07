@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,8 +49,11 @@ func (*aliasSeamHooks) NormalizeResponseAfter(_ context.Context, _, _ translator
 // F2 (t_32413204): response hooks pair the request with a RESTORED response, so
 // the request they see must be the un-aliased one, on both executor paths.
 func TestDPXAliasResponseHooksSeeUnaliasedRequest(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+	// The claude->claude stream path forwards events without the translator, so
+	// the stream case runs translated (the hooks only run inside the translator).
+	for _, tc := range []struct{ stream, translated bool }{{false, false}, {false, true}, {true, true}} {
+		stream := tc.stream
+		t.Run(fmt.Sprintf("stream=%t/translated=%t", tc.stream, tc.translated), func(t *testing.T) {
 			hooks := &aliasSeamHooks{}
 			translator.SetPluginHooks(hooks)
 			t.Cleanup(func() { translator.SetPluginHooks(nil) })
@@ -58,6 +62,9 @@ func TestDPXAliasResponseHooksSeeUnaliasedRequest(t *testing.T) {
 				req.Payload = append([]byte(`{"stream":true,`), req.Payload[1:]...)
 				opts.OriginalRequest = req.Payload
 				opts.Stream = true
+			}
+			if tc.translated {
+				opts.ResponseFormat = translator.FromString("openai")
 			}
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				raw, _ := io.ReadAll(r.Body)
@@ -119,7 +126,11 @@ func (s *aliasSplitUsageSink) HandleUsage(_ context.Context, r usage.Record) {
 }
 
 // F3 (t_32413204): on the non-stream alias path over an SSE upstream, a usage
-// frame split over two data: lines is counted once, fully.
+// frame split over two data: lines is counted once, fully. The alias path
+// publishes usage before validateClaudeStreamingResponse (inherited fleet
+// order), and that validation rejects the split frame, so the request itself
+// still fails with 502 exactly as upstream v8.0.53 does; the usage record it
+// leaves behind must carry the full split frame.
 func TestDPXAliasNonStreamCountsSplitUsageFrame(t *testing.T) {
 	sink := &aliasSplitUsageSink{make(chan usage.Record, 8)}
 	usage.RegisterNamedPlugin("alias-split-usage-observer", sink)
@@ -150,8 +161,8 @@ func TestDPXAliasNonStreamCountsSplitUsageFrame(t *testing.T) {
 	defer upstream.Close()
 	auth := offlineAuth(upstream.URL)
 	auth.ID = "alias-split-usage"
-	if _, err := e.Execute(context.Background(), auth, req, opts); err != nil {
-		t.Fatal(err)
+	if _, err := e.Execute(context.Background(), auth, req, opts); err == nil || !strings.Contains(err.Error(), "malformed stream data") {
+		t.Fatalf("expected the upstream split-frame validation error, got %v", err)
 	}
 	select {
 	case record := <-sink.records:
